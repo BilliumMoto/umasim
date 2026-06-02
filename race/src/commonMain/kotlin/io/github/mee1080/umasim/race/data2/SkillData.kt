@@ -15,9 +15,13 @@ import kotlin.random.Random
 private val jsonParser = Json { allowTrailingComma = true }
 
 suspend fun loadSkillData() {
-    val skillDataString =
+    loadSkillDataFromString(
         fetchFromUrl("https://raw.githubusercontent.com/mee1080/umasim/refs/heads/main/data/skill_data.txt")
-    skillData2 = jsonParser.decodeFromString<List<SkillData>>(skillDataString)
+    )
+}
+
+fun loadSkillDataFromString(text: String) {
+    skillData2 = jsonParser.decodeFromString<List<SkillData>>(text)
 }
 
 lateinit var skillData2: List<SkillData>

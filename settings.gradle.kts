@@ -18,6 +18,7 @@ include("web")
 include("desktop")
 include("cli")
 include("race")
+include("race-cli")
 include("compose")
 
 include("mcp")

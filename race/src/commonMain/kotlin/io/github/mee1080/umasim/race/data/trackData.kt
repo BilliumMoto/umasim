@@ -38,8 +38,13 @@ val recentEventTrackList by lazy {
 }
 
 suspend fun loadRecentEventTrackList() {
+    loadRecentEventTrackListFromString(
+        fetchFromUrl("https://raw.githubusercontent.com/mee1080/umasim/refs/heads/main/data/event_track.txt")
+    )
+}
+
+fun loadRecentEventTrackListFromString(text: String) {
     val list = mutableListOf<Pair<String, Track>>()
-    val text = fetchFromUrl("https://raw.githubusercontent.com/mee1080/umasim/refs/heads/main/data/event_track.txt")
     text.split("\n").forEach { line ->
         val data = line.trim().split(",")
         if (data.size >= 4) {
