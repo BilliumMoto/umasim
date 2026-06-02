@@ -169,7 +169,10 @@ fun main(args: Array<String>) {
         val response = simulate(request)
         println(json.encodeToString(response))
     } catch (e: Exception) {
-        System.err.println(e.message ?: e::class.simpleName ?: "race-cli failed")
+        System.err.println("race-cli failed: ${e.javaClass.name}: ${e.message ?: "(no message)"}")
+        e.stackTraceToString().lineSequence().drop(1).take(8).forEach {
+            System.err.println(it)
+        }
         exitProcess(1)
     }
 }
@@ -192,6 +195,12 @@ private fun loadData(request: RaceCliRequest) {
     val dataDir = File(request.dataDir)
     val skillDataFile = request.skillDataPath?.let(::File) ?: File(dataDir, "skill_data.txt")
     val eventTrackFile = request.eventTrackPath?.let(::File) ?: File(dataDir, "event_track.txt")
+    require(skillDataFile.isFile) {
+        "skill data file not found: ${skillDataFile.absolutePath}. Set dataDir or skillDataPath in the request."
+    }
+    require(eventTrackFile.isFile) {
+        "event track file not found: ${eventTrackFile.absolutePath}. Set dataDir or eventTrackPath in the request."
+    }
     loadSkillDataFromString(skillDataFile.readText())
     loadRecentEventTrackListFromString(eventTrackFile.readText())
 }
