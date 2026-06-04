@@ -32,6 +32,70 @@ Get-Content input.json | java -jar race-cli\build\libs\race-cli-1.0-all.jar
 
 The default `dataDir` is `data`, relative to the process working directory. If calling from another project, either set `cwd` to the umasim repo root or pass an absolute `dataDir`.
 
+## Data Dump Mode
+
+Use `--data` to dump simulator reference data as JSON without running a race:
+
+```powershell
+java -jar race-cli\build\libs\race-cli-1.0-all.jar --data track --data-dir data
+```
+
+The output shape is:
+
+```json
+{
+  "type": "track",
+  "data": []
+}
+```
+
+Supported `--data` types:
+
+| Type | Aliases | Data source | Meaning |
+|---|---|---|---|
+| `track` | `tracks` | `trackData` Kotlin table | All race locations and courses, including IDs and full `TrackDetail` course definitions. |
+| `event-track` | `event-tracks`, `event_track`, `event_tracks` | `data/event_track.txt` plus `trackData` | Recent event courses resolved to numeric `location` and `course` IDs. |
+| `skill` | `skills` | `data/skill_data.txt` | Full parsed skill table used by the simulator. |
+| `chara` | `charas`, `character`, `characters` | `data/chara.txt` | Parsed character variants, bonuses, and initial statuses. |
+| `enum` | `enums` | Kotlin enums | Accepted enum names, labels, and numeric values where available. |
+| `all` | none | all of the above | One object containing `track`, `eventTrack`, `skill`, `chara`, and `enum`. |
+
+`track` entries look like:
+
+```json
+{
+  "location": 10005,
+  "name": "東京",
+  "courses": [
+    {
+      "course": 10507,
+      "detail": {
+        "name": "芝 2400m",
+        "distance": 2400,
+        "surface": "芝"
+      }
+    }
+  ]
+}
+```
+
+`event-track` entries are flattened for immediate simulation input:
+
+```json
+{
+  "label": "6月チャンピオンズミーティング",
+  "location": 10005,
+  "course": 10507,
+  "condition": "GOOD",
+  "conditionLabel": "良",
+  "gateCount": 9,
+  "locationName": "東京",
+  "courseName": "芝 2400m"
+}
+```
+
+The JSON is UTF-8. If Japanese text displays as `?` in a Windows shell, parse stdout from Python or switch the terminal to UTF-8; the data itself is still JSON.
+
 ## Python Example
 
 ```python
@@ -172,7 +236,7 @@ Maps to `Track`.
 | `condition` | enum | from `event_track.txt` | Track condition. |
 | `gateCount` | int | from `event_track.txt` | Number of gates/runners used for gate/post calculations. |
 
-Course IDs are the same IDs used by `trackData` in the `race` module. For now, discover them from `race/src/commonMain/kotlin/io/github/mee1080/umasim/race/data/rawData.kt` or from frontend exports. The CLI does not yet provide a course-list command.
+Course IDs are the same IDs used by `trackData` in the `race` module. Discover them with `--data track`, or use `--data event-track` for the recent event courses already resolved to simulation-ready IDs.
 
 ### `setting`
 

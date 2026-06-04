@@ -1,5 +1,6 @@
 package io.github.mee1080.umasim.race.cli
 
+import io.github.mee1080.umasim.data.CharaLoader
 import io.github.mee1080.umasim.race.calc2.DebuffType
 import io.github.mee1080.umasim.race.calc2.RaceCalculator
 import io.github.mee1080.umasim.race.calc2.RaceFrame
@@ -15,10 +16,13 @@ import io.github.mee1080.umasim.race.data.PositionKeepMode
 import io.github.mee1080.umasim.race.data.RandomPosition
 import io.github.mee1080.umasim.race.data.SkillActivateAdjustment
 import io.github.mee1080.umasim.race.data.Style
+import io.github.mee1080.umasim.race.data.TrackDetail
 import io.github.mee1080.umasim.race.data.loadRecentEventTrackListFromString
+import io.github.mee1080.umasim.race.data.trackData
 import io.github.mee1080.umasim.race.data2.SkillData
 import io.github.mee1080.umasim.race.data2.findSkills
 import io.github.mee1080.umasim.race.data2.loadSkillDataFromString
+import io.github.mee1080.umasim.race.data2.skillData2
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -29,6 +33,8 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.encodeToJsonElement
 import java.io.File
 import kotlin.system.exitProcess
 
@@ -150,6 +156,83 @@ data class RaceFrameOutput(
     val triggeredDebuffs: List<String>,
 )
 
+@Serializable
+data class DataDumpResponse(
+    val type: String,
+    val data: JsonElement,
+)
+
+@Serializable
+data class TrackLocationOutput(
+    val location: Int,
+    val name: String,
+    val courses: List<TrackCourseOutput>,
+)
+
+@Serializable
+data class TrackCourseOutput(
+    val course: Int,
+    val detail: TrackDetail,
+)
+
+@Serializable
+data class EventTrackOutput(
+    val label: String,
+    val location: Int,
+    val course: Int,
+    val condition: String,
+    val conditionLabel: String,
+    val gateCount: Int,
+    val locationName: String,
+    val courseName: String,
+)
+
+@Serializable
+data class CharaOutput(
+    val id: Int,
+    val name: String,
+    val charaId: Int,
+    val charaName: String,
+    val rarity: Int,
+    val rank: Int,
+    val speedBonus: Int,
+    val staminaBonus: Int,
+    val powerBonus: Int,
+    val gutsBonus: Int,
+    val wisdomBonus: Int,
+    val initialStatus: StatusOutput,
+    val imageColor: String,
+)
+
+@Serializable
+data class StatusOutput(
+    val speed: Int,
+    val stamina: Int,
+    val power: Int,
+    val guts: Int,
+    val wisdom: Int,
+    val skillHints: List<String>,
+)
+
+@Serializable
+data class EnumEntryOutput(
+    val name: String,
+    val label: String? = null,
+    val value: Int? = null,
+)
+
+@Serializable
+data class EnumDumpOutput(
+    val condition: List<EnumEntryOutput>,
+    val style: List<EnumEntryOutput>,
+    val fitRank: List<String>,
+    val courseCondition: List<EnumEntryOutput>,
+    val skillActivateAdjustment: List<EnumEntryOutput>,
+    val randomPosition: List<EnumEntryOutput>,
+    val positionKeepMode: List<EnumEntryOutput>,
+    val debuffType: List<EnumEntryOutput>,
+)
+
 @OptIn(ExperimentalSerializationApi::class)
 private val json = Json {
     prettyPrint = false
@@ -163,11 +246,18 @@ fun main(args: Array<String>) {
         return
     }
     try {
+        val dataMode = parseDataMode(args)
+        if (dataMode != null) {
+            val dataDir = parseOption(args, "--data-dir") ?: "data"
+            val response = dumpData(dataMode, File(dataDir))
+            writeJson(response)
+            return
+        }
         val input = readInput(args)
         val request = json.decodeFromString<RaceCliRequest>(input)
         loadData(request)
         val response = simulate(request)
-        println(json.encodeToString(response))
+        writeJson(response)
     } catch (e: Exception) {
         System.err.println("race-cli failed: ${e.javaClass.name}: ${e.message ?: "(no message)"}")
         e.stackTraceToString().lineSequence().drop(1).take(8).forEach {
@@ -175,6 +265,25 @@ fun main(args: Array<String>) {
         }
         exitProcess(1)
     }
+}
+
+private inline fun <reified T> writeJson(value: T) {
+    System.out.write(json.encodeToString(value).toByteArray(Charsets.UTF_8))
+    System.out.write('\n'.code)
+    System.out.flush()
+}
+
+private fun parseDataMode(args: Array<String>): String? {
+    val index = args.indexOf("--data")
+    if (index < 0) return null
+    return args.getOrNull(index + 1)
+        ?: throw IllegalArgumentException("--data requires a type: track, event-track, skill, chara, enum, or all")
+}
+
+private fun parseOption(args: Array<String>, name: String): String? {
+    val index = args.indexOf(name)
+    if (index < 0) return null
+    return args.getOrNull(index + 1) ?: throw IllegalArgumentException("$name requires a value")
 }
 
 private fun readInput(args: Array<String>): String {
@@ -204,6 +313,130 @@ private fun loadData(request: RaceCliRequest) {
     loadSkillDataFromString(skillDataFile.readText())
     loadRecentEventTrackListFromString(eventTrackFile.readText())
 }
+
+private fun dumpData(type: String, dataDir: File): DataDumpResponse {
+    val normalizedType = type.lowercase()
+    val data = when (normalizedType) {
+        "track", "tracks" -> json.encodeToJsonElement(trackDump())
+        "event-track", "event-tracks", "event_track", "event_tracks" -> {
+            json.encodeToJsonElement(eventTrackDump(readDataFile(dataDir, "event_track.txt")))
+        }
+        "skill", "skills" -> {
+            loadSkillDataFromString(readDataFile(dataDir, "skill_data.txt"))
+            json.encodeToJsonElement(skillData2)
+        }
+        "chara", "charas", "character", "characters" -> {
+            json.encodeToJsonElement(charaDump(readDataFile(dataDir, "chara.txt")))
+        }
+        "enum", "enums" -> json.encodeToJsonElement(enumDump())
+        "all" -> json.encodeToJsonElement(
+            mapOf(
+                "track" to json.encodeToJsonElement(trackDump()),
+                "eventTrack" to json.encodeToJsonElement(eventTrackDump(readDataFile(dataDir, "event_track.txt"))),
+                "skill" to run {
+                    loadSkillDataFromString(readDataFile(dataDir, "skill_data.txt"))
+                    json.encodeToJsonElement(skillData2)
+                },
+                "chara" to json.encodeToJsonElement(charaDump(readDataFile(dataDir, "chara.txt"))),
+                "enum" to json.encodeToJsonElement(enumDump()),
+            )
+        )
+        else -> throw IllegalArgumentException(
+            "Unknown data type: $type. Supported types: track, event-track, skill, chara, enum, all"
+        )
+    }
+    return DataDumpResponse(normalizedType, data)
+}
+
+private fun readDataFile(dataDir: File, name: String): String {
+    val file = File(dataDir, name)
+    require(file.isFile) { "data file not found: ${file.absolutePath}" }
+    return file.readText()
+}
+
+private fun trackDump(): List<TrackLocationOutput> {
+    return trackData.entries.sortedBy { it.key }.map { (location, raceTrack) ->
+        TrackLocationOutput(
+            location = location,
+            name = raceTrack.name,
+            courses = raceTrack.courses.entries.sortedBy { it.key }.map { (course, detail) ->
+                TrackCourseOutput(course, detail)
+            },
+        )
+    }
+}
+
+private fun eventTrackDump(text: String): List<EventTrackOutput> {
+    return buildList {
+        text.lineSequence().forEach { line ->
+            val data = line.trim().split(",")
+            if (data.size < 4) return@forEach
+            val month = data[0].toInt()
+            val type = if (data[1] == "L") "リーグオブヒーローズ" else "チャンピオンズミーティング"
+            val label = "${month}月$type"
+            val courseName = data[2]
+            val distance = data[3]
+            val conditions = if (data.size < 5) CourseCondition.entries else {
+                listOf(CourseCondition.valueOf(data[4]))
+            }
+            val gateCount = if (data[1] == "L") 12 else 9
+            val location = trackData.entries.first { it.value.name == courseName }
+            val course = location.value.courses.entries.first { it.value.name.startsWith(distance) }
+            conditions.forEach { condition ->
+                add(
+                    EventTrackOutput(
+                        label = label,
+                        location = location.key,
+                        course = course.key,
+                        condition = condition.name,
+                        conditionLabel = condition.label,
+                        gateCount = gateCount,
+                        locationName = location.value.name,
+                        courseName = course.value.name,
+                    )
+                )
+            }
+        }
+    }
+}
+
+private fun charaDump(text: String): List<CharaOutput> {
+    return CharaLoader.load(text).map { chara ->
+        CharaOutput(
+            id = chara.id,
+            name = chara.name,
+            charaId = chara.charaId,
+            charaName = chara.charaName,
+            rarity = chara.rarity,
+            rank = chara.rank,
+            speedBonus = chara.speedBonus,
+            staminaBonus = chara.staminaBonus,
+            powerBonus = chara.powerBonus,
+            gutsBonus = chara.gutsBonus,
+            wisdomBonus = chara.wisdomBonus,
+            initialStatus = StatusOutput(
+                speed = chara.initialStatus.speed,
+                stamina = chara.initialStatus.stamina,
+                power = chara.initialStatus.power,
+                guts = chara.initialStatus.guts,
+                wisdom = chara.initialStatus.wisdom,
+                skillHints = chara.initialStatus.skillHint.keys.toList(),
+            ),
+            imageColor = chara.imageColor,
+        )
+    }
+}
+
+private fun enumDump() = EnumDumpOutput(
+    condition = Condition.entries.map { EnumEntryOutput(it.name, it.label, it.value) },
+    style = Style.entries.map { EnumEntryOutput(it.name, it.text, it.value) },
+    fitRank = FitRank.entries.map { it.name },
+    courseCondition = CourseCondition.entries.map { EnumEntryOutput(it.name, it.label, it.value) },
+    skillActivateAdjustment = SkillActivateAdjustment.entries.map { EnumEntryOutput(it.name, it.label, it.value) },
+    randomPosition = RandomPosition.entries.map { EnumEntryOutput(it.name, it.label, it.value) },
+    positionKeepMode = PositionKeepMode.entries.map { EnumEntryOutput(it.name, it.label) },
+    debuffType = DebuffType.entries.map { EnumEntryOutput(it.name, it.label) },
+)
 
 private fun simulate(request: RaceCliRequest): RaceCliResponse {
     require(request.count > 0) { "count must be greater than 0" }
@@ -371,12 +604,14 @@ private fun printHelp() {
         Usage: race-cli [input.json]
                race-cli --input input.json
                race-cli < input.json
+               race-cli --data TYPE [--data-dir data]
 
         Minimal input:
         {"count":100,"uma":{"speed":1800,"stamina":1600,"power":1300,"guts":1200,"wisdom":1300}}
 
         By default dataDir is "data" and must contain skill_data.txt and event_track.txt.
         Enum fields accept Kotlin enum names, and Japanese labels where the simulator defines one.
+        Data dump types: track, event-track, skill, chara, enum, all.
         """.trimIndent()
     )
 }

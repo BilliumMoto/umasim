@@ -12,6 +12,7 @@ repositories {
 }
 
 dependencies {
+    implementation(project(":core"))
     implementation(project(":race"))
     implementation(libs.kotlinx.coroutinesCore)
     implementation(libs.kotlinx.serializationJson)
