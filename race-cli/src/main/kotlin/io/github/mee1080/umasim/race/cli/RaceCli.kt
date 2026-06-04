@@ -34,6 +34,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.encodeToJsonElement
 import java.io.File
 import kotlin.system.exitProcess
@@ -69,7 +70,7 @@ data class UmaStatusInput(
     val styleFit: String? = null,
     val popularity: Int? = null,
     val gateNumber: Int? = null,
-    val skills: List<String> = emptyList(),
+    val skills: List<JsonElement> = emptyList(),
     val uniqueLevel: Int? = null,
 )
 
@@ -541,9 +542,16 @@ private inline fun <reified T : Enum<T>> String?.toEnum(default: T, label: (T) -
         ?: throw IllegalArgumentException("Unknown ${T::class.simpleName}: $this")
 }
 
+private fun JsonElement.toSkill(): SkillData {
+    val input = (this as? JsonPrimitive)?.content
+        ?: throw IllegalArgumentException("Skill entries must be skill names or skill ids: $this")
+    return input.toSkill()
+}
+
 private fun String.toSkill(): SkillData {
-    return findSkills(this)?.firstOrNull()
-        ?: throw IllegalArgumentException("Unknown skill: $this")
+    return skillData2.firstOrNull { it.id == this }
+        ?: findSkills(this)?.firstOrNull()
+        ?: throw IllegalArgumentException("Unknown skill name or id: $this")
 }
 
 private fun List<RaceSimulationResult>.toSummary(): RaceSummaryOutput {

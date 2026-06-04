@@ -193,7 +193,7 @@ Maps to `UmaStatus`.
   "styleFit": "A",
   "popularity": 1,
   "gateNumber": 0,
-  "skills": ["右回り◎", "好転一息"],
+  "skills": ["右回り◎", 901121, "200252"],
   "uniqueLevel": 6
 }
 ```
@@ -213,7 +213,7 @@ Maps to `UmaStatus`.
 | `styleFit` | enum | `A` | Style aptitude. |
 | `popularity` | int | `1` | Popularity rank. Used by some skill conditions. |
 | `gateNumber` | int | `0` | Gate number control. `0` means random, `-1` biases inside, `-2` biases outside, positive values select a gate. |
-| `skills` | string[] | `[]` | Skill names. Names are matched exactly first, then fuzzy matched like the frontend/MCP tool. If duplicate skills exist, the first match is used. |
+| `skills` | string/int[] | `[]` | Skill IDs or names. Exact skill ID matches are preferred, then names are matched exactly/fuzzily like the frontend/MCP tool. Use IDs when duplicate skill names exist. |
 | `uniqueLevel` | int | `6` | Unique skill level used when a unique skill is present. |
 
 ### `track`
