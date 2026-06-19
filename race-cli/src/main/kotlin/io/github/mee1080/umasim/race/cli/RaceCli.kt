@@ -37,6 +37,8 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.encodeToJsonElement
 import java.io.File
+import java.util.TreeMap
+import kotlin.math.roundToLong
 import kotlin.system.exitProcess
 
 @Serializable
@@ -47,6 +49,7 @@ data class RaceCliRequest(
     val skillDataPath: String? = null,
     val eventTrackPath: String? = null,
     val includeRuns: Boolean = true,
+    val includeTimeCounts: Boolean = false,
     val includeFirstRunFrames: Boolean = false,
     val maxFrames: Int? = null,
     val uma: UmaStatusInput = UmaStatusInput(),
@@ -108,6 +111,7 @@ data class RaceCliResponse(
     val count: Int,
     val summary: RaceSummaryOutput,
     val runs: List<RaceRunOutput> = emptyList(),
+    val timeCounts: Map<String, Int> = emptyMap(),
     val firstRunFrames: List<RaceFrameOutput> = emptyList(),
 )
 
@@ -444,7 +448,8 @@ private fun simulate(request: RaceCliRequest): RaceCliResponse {
     val setting = request.toRaceSetting()
     val system = request.system.toSystemSetting()
     val threads = request.threads.coerceAtLeast(1)
-    val results = mutableListOf<RaceSimulationResult>()
+    val stats = RaceStatsAccumulator()
+    val runs = mutableListOf<RaceRunOutput>()
     val mutex = Mutex()
     var firstRunFrames: List<RaceFrame> = emptyList()
     runBlocking {
@@ -454,25 +459,97 @@ private fun simulate(request: RaceCliRequest): RaceCliResponse {
                 repeat(request.count / threads + if (index < request.count % threads) 1 else 0) {
                     val (result, state) = calculator.simulate(setting)
                     mutex.withLock {
-                        if (firstRunFrames.isEmpty()) {
+                        if (request.includeFirstRunFrames && firstRunFrames.isEmpty()) {
                             firstRunFrames = state.simulation.frames.toList()
                         }
-                        results += result
+                        stats.add(result, request.includeTimeCounts)
+                        if (request.includeRuns) {
+                            runs += result.toOutput()
+                        }
                     }
                 }
             }
         }.awaitAll()
     }
     return RaceCliResponse(
-        count = results.size,
-        summary = results.toSummary(),
-        runs = if (request.includeRuns) results.map { it.toOutput() } else emptyList(),
+        count = stats.count,
+        summary = stats.toSummary(),
+        runs = runs,
+        timeCounts = if (request.includeTimeCounts) stats.timeCountsOutput() else emptyMap(),
         firstRunFrames = if (request.includeFirstRunFrames) {
             firstRunFrames.take(request.maxFrames ?: firstRunFrames.size).mapIndexed { index, frame ->
                 frame.toOutput(index)
             }
         } else emptyList(),
     )
+}
+
+private class RaceStatsAccumulator {
+    var count = 0
+        private set
+    private var raceTimeSum = 0.0
+    private var bestTime = Double.POSITIVE_INFINITY
+    private var worstTime = Double.NEGATIVE_INFINITY
+    private var raceTimeWithoutRunUpSum = 0.0
+    private var raceTimeDeltaSum = 0.0
+    private var spDiffSum = 0.0
+    private var bestSp = Double.NEGATIVE_INFINITY
+    private var worstSp = Double.POSITIVE_INFINITY
+    private var maxSpurtCount = 0
+    private var staminaKeepCount = 0
+    private var staminaKeepDistanceSum = 0.0
+    private var positionCompetitionCountSum = 0.0
+    private var competeFightFinishedCount = 0
+    private var competeFightDenominator = 0
+    private var competeFightTimeSum = 0.0
+    private val timeCounts = TreeMap<Long, Int>()
+
+    fun add(result: RaceSimulationResult, includeTimeCounts: Boolean) {
+        count += 1
+        raceTimeSum += result.raceTime
+        bestTime = minOf(bestTime, result.raceTime)
+        worstTime = maxOf(worstTime, result.raceTime)
+        raceTimeWithoutRunUpSum += result.raceTimeWithoutRunUp
+        raceTimeDeltaSum += result.raceTimeDelta
+        spDiffSum += result.spDiff
+        bestSp = maxOf(bestSp, result.spDiff)
+        worstSp = minOf(worstSp, result.spDiff)
+        if (result.maxSpurt) maxSpurtCount += 1
+        if (result.staminaKeepDistance > 0.0) staminaKeepCount += 1
+        staminaKeepDistanceSum += result.staminaKeepDistance
+        positionCompetitionCountSum += result.positionCompetitionCount.toDouble()
+        if (result.competeFightFinished) competeFightFinishedCount += 1
+        if (result.competeFightTime > 0.0) competeFightDenominator += 1
+        competeFightTimeSum += result.competeFightTime
+        if (includeTimeCounts) {
+            val raceTimeMillis = (result.raceTime * 1000.0).roundToLong()
+            timeCounts[raceTimeMillis] = (timeCounts[raceTimeMillis] ?: 0) + 1
+        }
+    }
+
+    fun toSummary(): RaceSummaryOutput {
+        require(count > 0) { "No race results were produced" }
+        return RaceSummaryOutput(
+            averageTime = raceTimeSum / count,
+            bestTime = bestTime,
+            worstTime = worstTime,
+            averageTimeWithoutRunUp = raceTimeWithoutRunUpSum / count,
+            averageTimeDelta = raceTimeDeltaSum / count,
+            averageSp = spDiffSum / count,
+            bestSp = bestSp,
+            worstSp = worstSp,
+            maxSpurtRate = maxSpurtCount / count.toDouble(),
+            staminaKeepRate = staminaKeepCount / count.toDouble(),
+            averageStaminaKeepDistance = staminaKeepDistanceSum / count,
+            averagePositionCompetitionCount = positionCompetitionCountSum / count,
+            competeFightFinishRate = competeFightFinishedCount / competeFightDenominator.coerceAtLeast(1).toDouble(),
+            averageCompeteFightTime = competeFightTimeSum / count,
+        )
+    }
+
+    fun timeCountsOutput(): Map<String, Int> {
+        return timeCounts.mapKeys { it.key.toString() }
+    }
 }
 
 private fun RaceCliRequest.toRaceSetting(): RaceSetting {
@@ -553,28 +630,6 @@ private fun String.toSkill(): SkillData {
         ?: findSkills(this)?.firstOrNull()
         ?: throw IllegalArgumentException("Unknown skill name or id: $this")
 }
-
-private fun List<RaceSimulationResult>.toSummary(): RaceSummaryOutput {
-    return RaceSummaryOutput(
-        averageTime = averageOf { it.raceTime },
-        bestTime = minOf { it.raceTime },
-        worstTime = maxOf { it.raceTime },
-        averageTimeWithoutRunUp = averageOf { it.raceTimeWithoutRunUp },
-        averageTimeDelta = averageOf { it.raceTimeDelta },
-        averageSp = averageOf { it.spDiff },
-        bestSp = maxOf { it.spDiff },
-        worstSp = minOf { it.spDiff },
-        maxSpurtRate = count { it.maxSpurt } / size.toDouble(),
-        staminaKeepRate = count { it.staminaKeepDistance > 0.0 } / size.toDouble(),
-        averageStaminaKeepDistance = averageOf { it.staminaKeepDistance },
-        averagePositionCompetitionCount = averageOf { it.positionCompetitionCount.toDouble() },
-        competeFightFinishRate = count { it.competeFightFinished } /
-                count { it.competeFightTime > 0.0 }.coerceAtLeast(1).toDouble(),
-        averageCompeteFightTime = averageOf { it.competeFightTime },
-    )
-}
-
-private fun <T> List<T>.averageOf(selector: (T) -> Double): Double = sumOf(selector) / size
 
 private fun RaceSimulationResult.toOutput(): RaceRunOutput {
     return RaceRunOutput(

@@ -148,6 +148,7 @@ All fields are optional unless noted. Unknown JSON fields are ignored.
   "skillDataPath": null,
   "eventTrackPath": null,
   "includeRuns": true,
+  "includeTimeCounts": false,
   "includeFirstRunFrames": false,
   "maxFrames": null,
   "uma": {},
@@ -167,6 +168,7 @@ All fields are optional unless noted. Unknown JSON fields are ignored.
 | `skillDataPath` | string/null | null | Explicit path to `skill_data.txt`; overrides `dataDir`. |
 | `eventTrackPath` | string/null | null | Explicit path to `event_track.txt`; overrides `dataDir`. |
 | `includeRuns` | boolean | `true` | Include one result object per simulation in `runs`. Disable for large `count` if only aggregate stats are needed. |
+| `includeTimeCounts` | boolean | `false` | Include `timeCounts`, a memory-cheap race-time histogram keyed by rounded race time in milliseconds. |
 | `includeFirstRunFrames` | boolean | `false` | Include the frame trace for the first completed run. Useful for plotting speed/stamina/skill timing. |
 | `maxFrames` | int/null | null | Limit `firstRunFrames` length. Ignored unless `includeFirstRunFrames` is true. |
 | `uma` | object | `{}` | Main runner status and skills. |
@@ -403,6 +405,7 @@ Enum inputs accept Kotlin enum names. For enums that define Japanese UI labels, 
     "averageCompeteFightTime": 1.3
   },
   "runs": [],
+  "timeCounts": {},
   "firstRunFrames": []
 }
 ```
@@ -422,6 +425,20 @@ Included when `includeRuns` is true. Each item contains:
 | `staminaKeepDistance` | Distance spent in stamina keep mode. |
 | `competeFightFinished` | Whether compete fight was still active at finish. |
 | `competeFightTime` | Duration of compete fight. |
+
+### `timeCounts`
+
+Included when `includeTimeCounts` is true. Keys are rounded race times in milliseconds, and values are the number of simulations that finished at that time.
+
+```json
+{
+  "116508": 3,
+  "116556": 5,
+  "116603": 2
+}
+```
+
+This is intended for large `count` runs where `includeRuns` would return too much data.
 
 ### `firstRunFrames`
 
