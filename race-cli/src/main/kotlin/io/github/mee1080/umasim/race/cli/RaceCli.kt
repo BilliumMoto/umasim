@@ -457,7 +457,10 @@ private fun simulate(request: RaceCliRequest): RaceCliResponse {
             async(Dispatchers.Default) {
                 val calculator = RaceCalculator(system)
                 repeat(request.count / threads + if (index < request.count % threads) 1 else 0) {
-                    val (result, state) = calculator.simulate(setting)
+                    val (result, state) = calculator.simulate(
+                        setting,
+                        keepFrameHistory = request.includeFirstRunFrames,
+                    )
                     mutex.withLock {
                         if (request.includeFirstRunFrames && firstRunFrames.isEmpty()) {
                             firstRunFrames = state.simulation.frames.toList()

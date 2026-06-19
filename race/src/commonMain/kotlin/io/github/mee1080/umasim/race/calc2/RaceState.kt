@@ -864,6 +864,7 @@ class RaceSimulationState(
     var positionKeepExitDistance: Double = 0.0,
 
     val frames: MutableList<RaceFrame> = mutableListOf(),
+    val keepFrameHistory: Boolean = true,
 ) {
     val totalSpeed get() = currentSpeed + fullSpurtCurrentSpeed
 
@@ -882,6 +883,13 @@ class RaceSimulationState(
     val hasLeadCompetition get() = leadCompetitionStart != null
 
     val currentTime get() = frameElapsed * secondPerFrame - startTime
+
+    fun addFrame(frame: RaceFrame) {
+        if (!keepFrameHistory) {
+            frames.clear()
+        }
+        frames += frame
+    }
 }
 
 class SkillTriggerCount {

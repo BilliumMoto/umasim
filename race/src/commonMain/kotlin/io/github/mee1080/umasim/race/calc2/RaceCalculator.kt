@@ -32,13 +32,16 @@ class RaceCalculator(
     private val system: SystemSetting,
 ) {
 
-    fun simulate(setting: RaceSetting): Pair<RaceSimulationResult, RaceState> {
-        val state = setting.initializeState()
+    fun simulate(setting: RaceSetting, keepFrameHistory: Boolean = true): Pair<RaceSimulationResult, RaceState> {
+        val state = setting.initializeState(keepFrameHistory = keepFrameHistory)
         val result = state.progressRace()
         return result to state
     }
 
-    private fun RaceSetting.initializeState(isVirtualLeader: Boolean = false): RaceState {
+    private fun RaceSetting.initializeState(
+        isVirtualLeader: Boolean = false,
+        keepFrameHistory: Boolean = true,
+    ): RaceState {
         val invokedSkills = invokeSkills()
         val gateCount = track.gateCount
         val gateNumber = when (umaStatus.gateNumber) {
@@ -55,6 +58,7 @@ class RaceCalculator(
             postNumber = gateNumberToPostNumber[gateNumber][gateCount],
             position = -trackDetail.runUp.toDouble(),
             startTime = if (trackDetail.runUp > 0) 100000.0 else 0.0,
+            keepFrameHistory = keepFrameHistory,
         )
         val settingWithPassive = applyPassive(system, simulationState)
         simulationState.passiveTriggered = settingWithPassive.passiveBonus.skills.size
@@ -63,7 +67,10 @@ class RaceCalculator(
         }
 
         val virtualLeader = if (!isVirtualLeader && positionKeepMode == PositionKeepMode.VIRTUAL) {
-            copy(umaStatus = virtualLeader, positionKeepMode = PositionKeepMode.SPEED_UP).initializeState(true)
+            copy(umaStatus = virtualLeader, positionKeepMode = PositionKeepMode.SPEED_UP).initializeState(
+                isVirtualLeader = true,
+                keepFrameHistory = keepFrameHistory,
+            )
         } else null
         val state = RaceState(settingWithPassive, simulationState, system, virtualLeader)
         val simulation = state.simulation
@@ -166,13 +173,15 @@ private fun RaceState.triggerStartSkills() {
             skills += triggerSkill(skill)
         }
     }
-    simulation.frames += RaceFrame(
-        speed = 0.0,
-        sp = setting.spMax,
-        startPosition = simulation.position,
-        currentLane = simulation.currentLane,
-        triggeredSkills = skills,
-        paceMakerFrame = paceMaker?.simulation?.frames?.lastOrNull(),
+    simulation.addFrame(
+        RaceFrame(
+            speed = 0.0,
+            sp = setting.spMax,
+            startPosition = simulation.position,
+            currentLane = simulation.currentLane,
+            triggeredSkills = skills,
+            paceMakerFrame = paceMaker?.simulation?.frames?.lastOrNull(),
+        )
     )
 }
 
@@ -429,7 +438,7 @@ private fun RaceState.updateFrame(): Boolean {
         operatingSkills = simulation.operatingSkills.toList(),
         spurting = spurting,
     )
-    simulation.frames += frame
+    simulation.addFrame(frame)
     return false
 }
 
