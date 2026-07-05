@@ -29,6 +29,7 @@ import io.github.mee1080.umasim.scenario.climax.WeightItem
 import io.github.mee1080.umasim.scenario.gm.Founder
 import io.github.mee1080.umasim.scenario.live.LiveCalculator
 import io.github.mee1080.umasim.scenario.mecha.MechaCalculator
+import io.github.mee1080.umasim.scenario.ramen.RamenStatus
 import io.github.mee1080.umasim.scenario.uaf.UafAthleticsLevelCalculator
 import io.github.mee1080.umasim.simulation2.*
 import io.github.mee1080.umasim.util.SaveDataConverter
@@ -38,6 +39,7 @@ import io.github.mee1080.utility.applyIfNotNull
 import kotlinx.browser.localStorage
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.Json
+import kotlin.time.Duration.Companion.milliseconds
 
 @Stable
 class ViewModel(val scope: CoroutineScope, initialPage: String?) {
@@ -91,7 +93,7 @@ class ViewModel(val scope: CoroutineScope, initialPage: String?) {
                 newState = calculateBonus(newState)
             }
             state = newState
-            delay(100L)
+            delay(100L.milliseconds)
         }
     }
 
@@ -402,6 +404,31 @@ class ViewModel(val scope: CoroutineScope, initialPage: String?) {
             target.name to trainingResult.first.first + trainingResult.second - notJoinResult.first.first - notJoinResult.second
         }
 
+        var ramenTastingImpact = emptyList<RamenTastingImpact>()
+        if (state.scenario == Scenario.RAMEN && state.ramenState.turn in 25..72 && state.ramenState.activeTastingRegion != null) {
+            val ramenStatus = scenarioStatus as? RamenStatus
+            val region = state.ramenState.activeTastingRegion
+            if (ramenStatus != null && (region.targetAll || region.targetTypes.contains(trainingType))) {
+                val noTastingStatus = ramenStatus.copy(activeTastingRegion = null)
+                val noTastingInfo = trainingCalcInfo.copy(scenarioStatus = noTastingStatus)
+                val s2 = Calculator.calcTrainingSuccessStatusSeparated(
+                    noTastingInfo,
+                    state.scenario.calculator.getScenarioCalcBonus(noTastingInfo)
+                ).let { it.first.first + it.second }
+                ramenTastingImpact = allSupportList.filter { support ->
+                    !joinSupportList.any { it.card.id == support.card.id } && !support.card.type.outingType
+                }.map { support ->
+                    val withSupportJoinList = joinSupportList + support
+                    val withSupportInfo = trainingCalcInfo.copy(member = withSupportJoinList)
+                    val s1 = Calculator.calcTrainingSuccessStatusSeparated(
+                        withSupportInfo,
+                        state.scenario.calculator.getScenarioCalcBonus(withSupportInfo)
+                    ).let { it.first.first + it.second }
+                    RamenTastingImpact(support.name, s1, s1 - s2)
+                }
+            }
+        }
+
         val supportList = state.supportSelectionList.mapIndexedNotNull { index, support ->
             support.toMemberState(state.scenario, index)
         }
@@ -474,6 +501,7 @@ class ViewModel(val scope: CoroutineScope, initialPage: String?) {
             trainingPerformanceValue = trainingPerformanceValue,
             rawTrainingResult = trainingResult.first.second,
             trainingImpact = trainingImpact,
+            ramenTastingImpact = ramenTastingImpact,
             expectedResult = expectedResult.first,
             upperRate = upperRate,
 //            coinRate = coinRate,
@@ -825,5 +853,9 @@ class ViewModel(val scope: CoroutineScope, initialPage: String?) {
 
     fun updateBC(update: BCState.() -> BCState) {
         update { copy(bcState = bcState.update()) }
+    }
+
+    fun updateRamen(update: RamenState.() -> RamenState) {
+        update { copy(ramenState = ramenState.update()) }
     }
 }

@@ -47,7 +47,7 @@ class RaceCalculator(
         val gateNumber = when (umaStatus.gateNumber) {
             0 -> Random.nextInt(1..gateCount)
             -1 -> Random.nextInt(1..((3..6).maxBy { gateNumberToPostNumber[it][gateCount] <= 3 }))
-            -2 -> Random.nextInt(((6..12).maxBy { gateNumberToPostNumber[it][gateCount] >= 6 })..8)
+            -2 -> Random.nextInt(((6..12).maxBy { gateNumberToPostNumber[it][gateCount] >= 6 })..gateCount)
             else -> umaStatus.gateNumber
         }
         val initialLane = gateNumber * horseLane + track.initialLaneAdjuster
@@ -205,7 +205,7 @@ private fun RaceState.progressRace(): RaceSimulationResult {
 }
 
 private fun RaceState.updateFrame(): Boolean {
-    if (simulation.frameElapsed > 5000) {
+    if (simulation.frameElapsed > 5000 || simulation.position >= setting.courseLength) {
         return true
     }
     paceMaker?.updateFrame()
@@ -381,12 +381,14 @@ private fun RaceState.updateFrame(): Boolean {
         }
     }
 
+    val frameTargetSpeed = targetSpeed + fullSpurtTargetSpeed
+    val frameAcceleration = acceleration + fullSpurtAcceleration
     move(secondPerFrame)
     frame = frame.copy(
         movement = simulation.position - simulation.startPosition,
         consume = simulation.sp - startSp,
-        targetSpeed = targetSpeed + fullSpurtTargetSpeed,
-        acceleration = acceleration + fullSpurtAcceleration,
+        targetSpeed = frameTargetSpeed,
+        acceleration = frameAcceleration,
         triggeredDebuffs = triggeredDebuffs,
     )
     simulation.frameElapsed++

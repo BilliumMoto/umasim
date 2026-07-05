@@ -44,7 +44,7 @@ data class State(
     val graphState: GraphState = GraphState(),
 
     val divideMode: Boolean = false,
-    val scenario: Scenario = Scenario.BC,
+    val scenario: Scenario = Scenario.RAMEN,
     val chara: Chara = WebConstants.charaList[0],
     val supportSaveName: String = "",
     val supportLoadList: List<String> = emptyList(),
@@ -74,6 +74,7 @@ data class State(
     val trainingPerformanceValue: Int = 0,
     val rawTrainingResult: ExpectedStatus = ExpectedStatus(),
     val trainingImpact: List<Pair<String, Status>> = emptyList(),
+    val ramenTastingImpact: List<RamenTastingImpact> = emptyList(),
     val expectedResult: ExpectedStatus = ExpectedStatus(),
     val upperRate: Double = 0.0,
     val friendProbability: Double = 0.0,
@@ -95,6 +96,7 @@ data class State(
     val mechaState: MechaState = MechaState(),
     val mujintoState: MujintoState = MujintoState(),
     val bcState: BCState = BCState(),
+    val ramenState: RamenState = RamenState(),
 ) {
 
     val supportFilterApplied get() = supportFilter == appliedSupportFilter
@@ -156,6 +158,7 @@ data class State(
             ?: mechaStatusIfEnabled
             ?: mujintoStatusIfEnabled
             ?: bcStatusIfEnabled
+            ?: ramenStatusIfEnabled
 
     val trainingLiveStateIfEnabled get() = if (scenario == Scenario.GRAND_LIVE) trainingLiveState else null
 
@@ -176,6 +179,8 @@ data class State(
 
     val bcStatusIfEnabled get() = if (scenario == Scenario.BC) bcState.toBCStatus(selectedTrainingType) else null
 
+    val ramenStatusIfEnabled get() = if (scenario == Scenario.RAMEN) ramenState.toRamenStatus() else null
+
     val specialityRateUp
         get() = when (scenario) {
             Scenario.GRAND_LIVE -> trainingLiveState.specialityRateUp
@@ -183,6 +188,12 @@ data class State(
             else -> 0
         }
 }
+
+data class RamenTastingImpact(
+    val name: String,
+    val status: Status,
+    val impact: Status,
+)
 
 data class SupportSelection(
     val selectedSupport: Int = WebConstants.notSelected.first,

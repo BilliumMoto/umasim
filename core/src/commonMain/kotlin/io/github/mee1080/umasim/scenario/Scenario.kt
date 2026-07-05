@@ -39,6 +39,9 @@ import io.github.mee1080.umasim.scenario.mujinto.mujintoTrainingData
 import io.github.mee1080.umasim.scenario.onsen.OnsenCalculator
 import io.github.mee1080.umasim.scenario.onsen.OnsenScenarioEvents
 import io.github.mee1080.umasim.scenario.onsen.onsenTrainingData
+import io.github.mee1080.umasim.scenario.ramen.RamenCalculator
+import io.github.mee1080.umasim.scenario.ramen.RamenScenarioEvents
+import io.github.mee1080.umasim.scenario.ramen.ramenTrainingData
 import io.github.mee1080.umasim.scenario.uaf.UafCalculator
 import io.github.mee1080.umasim.scenario.uaf.UafScenarioEvents
 import io.github.mee1080.umasim.scenario.uaf.uafTrainingData
@@ -242,6 +245,20 @@ enum class Scenario(
             "フォーエバーヤング", "マルシュロレーヌ", "カジノドライヴ",
         ),
         calculator = BCCalculator,
+    ),
+
+    RAMEN(
+        scenarioNumber = 14,
+        displayName = "らっしゃい！トレセン軒！",
+        trainingData = ramenTrainingData,
+        scenarioEvents = { RamenScenarioEvents() },
+        guestMember = true,
+        turn = 78,
+        scenarioLink = setOf(
+            "ファインモーション", "メイショウドトウ", "ナイスネイチャ", "ナリタトップロード",
+            "カルストンライトオ", "駿川たづな", "ライトハロー",
+        ),
+        calculator = RamenCalculator,
     ),
 
     ;
