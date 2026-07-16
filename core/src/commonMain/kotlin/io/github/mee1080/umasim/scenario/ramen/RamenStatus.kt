@@ -5,6 +5,7 @@ import io.github.mee1080.umasim.data.trainingType
 import io.github.mee1080.umasim.simulation2.RamenActionParam
 import io.github.mee1080.umasim.simulation2.ScenarioStatus
 import io.github.mee1080.umasim.simulation2.SimulationState
+import io.github.mee1080.utility.applyIf
 import kotlin.math.min
 
 fun SimulationState.updateRamenStatus(update: RamenStatus.() -> RamenStatus): SimulationState {
@@ -28,14 +29,24 @@ data class RamenStatus(
         RamenTipType.NOODLE to 0,
         RamenTipType.SOUP to 0,
         RamenTipType.TOPPING to 0,
-        RamenTipType.HIDDEN to 0
     ),
+    val hiddenTips: Int = 0,
     val tipHistory: List<RamenTipType> = emptyList(),
     val excitementPt: Int = 0,
     val activeTastingRegion: Pair<RamenRegion, Int>? = null,
     val trainingTip: Map<StatusType, RamenTipType> = emptyMap(),
     val rmjBonus: RamenBaseBonus = RamenBaseBonus(0, 0, 0, 0),
 ) : ScenarioStatus {
+
+    override fun toShortString() = buildString {
+        append("地域選択: ${selectedRegions.joinToString(",") { it.regionName }}")
+        append("(${baseGauge.noodleGauge}/${baseGauge.soupGauge}/${baseGauge.toppingGauge})")
+        append(", ゲージ: ${gauges.values.joinToString("/")}")
+        append(", コツ: ${tips.values.joinToString("/")}")
+        append(", 隠し味: $hiddenTips")
+        append(", 盛り上がりPt: $excitementPt")
+        append(", 試食会: ${activeTastingRegion?.first?.regionName ?: "なし"}")
+    }
 
     val period = (turn - 1) / 24
 
@@ -51,13 +62,17 @@ data class RamenStatus(
 
     val regionRankBonus = ramenRegionRankBonus[regionRank]
 
+    val noodle = gauges[RamenTipType.NOODLE] ?: 0
+    val soup = gauges[RamenTipType.SOUP] ?: 0
+    val topping = gauges[RamenTipType.TOPPING] ?: 0
+
     fun shuffleTrainingTip(): RamenStatus {
         val tipList = listOf(
             RamenTipType.NOODLE, RamenTipType.NOODLE,
             RamenTipType.SOUP, RamenTipType.SOUP,
             RamenTipType.TOPPING, RamenTipType.TOPPING,
         ).shuffled()
-        val newTrainingTip = (0..5).associate {
+        val newTrainingTip = trainingType.indices.associate {
             trainingType[it] to tipList[it]
         }
         return copy(trainingTip = newTrainingTip)
@@ -67,8 +82,6 @@ data class RamenStatus(
         return copy(
             selectedRegions = emptyList(),
             gauges = gauges.map { it.key to 0 }.toMap(),
-            tips = tips.map { it.key to 0 }.toMap(),
-            tipHistory = emptyList(),
             excitementPt = 0,
         )
     }
@@ -104,9 +117,7 @@ data class RamenStatus(
             val newHistory = tipHistory - type
             return copy(tips = newTips, tipHistory = newHistory)
         } else {
-            val newTips = tips.toMutableMap()
-            newTips[RamenTipType.HIDDEN] = (newTips[RamenTipType.HIDDEN]!!) - 1
-            return copy(tips = newTips)
+            return addHiddenTips(-1)
         }
     }
 
@@ -127,23 +138,27 @@ data class RamenStatus(
             .addGauge(RamenTipType.TOPPING, topping)
     }
 
-    fun addHiddenTaste(amount: Int): RamenStatus {
-        val newTips = tips.toMutableMap()
-        newTips[RamenTipType.HIDDEN] = minOf(4, (newTips[RamenTipType.HIDDEN] ?: 0) + amount)
-        return copy(tips = newTips)
+    fun addHiddenTips(amount: Int): RamenStatus {
+        return copy(hiddenTips = min(4, hiddenTips + amount))
     }
 
-    fun activateTasting(region: RamenRegion): RamenStatus {
+    fun activateTasting(region: RamenRegion, changeHiddenTips: List<RamenTipType> = emptyList()): RamenStatus {
         var state = this
-        repeat(region.noodle) {
-            state = state.removeTipOrHidden(RamenTipType.NOODLE)
+        val changeCounts = changeHiddenTips.groupingBy { it }.eachCount()
+
+        fun processType(type: RamenTipType, required: Int) {
+            val changeCount = changeCounts[type] ?: 0
+            state = state.addHiddenTips(-changeCount)
+            val normalRequired = required - changeCount
+            repeat(normalRequired) {
+                state = state.removeTipOrHidden(type)
+            }
         }
-        repeat(region.soup) {
-            state = state.removeTipOrHidden(RamenTipType.SOUP)
-        }
-        repeat(region.topping) {
-            state = state.removeTipOrHidden(RamenTipType.TOPPING)
-        }
+
+        processType(RamenTipType.NOODLE, region.noodle)
+        processType(RamenTipType.SOUP, region.soup)
+        processType(RamenTipType.TOPPING, region.topping)
+
         val gainPt = ramenGainExcitePt[period]
         val tastingCount = min(5, excitementPt / gainPt / 10)
         return state.copy(
@@ -151,4 +166,26 @@ data class RamenStatus(
             excitementPt = state.excitementPt + gainPt * (10 + tastingCount),
         )
     }
+}
+
+fun RamenActionParam.add(tipType: RamenTipType, value: Int, friend: Boolean): RamenActionParam {
+    return when (tipType) {
+        RamenTipType.NOODLE -> copy(noodleGauge = noodleGauge + value)
+        RamenTipType.SOUP -> copy(soupGauge = soupGauge + value)
+        RamenTipType.TOPPING -> copy(toppingGauge = toppingGauge + value)
+    }.applyIf(friend) {
+        copy(
+            noodleGauge = noodleGauge + 2,
+            soupGauge = soupGauge + 2,
+            toppingGauge = toppingGauge + 2,
+        )
+    }
+}
+
+fun RamenActionParam.adjustMax(ramenStatus: RamenStatus): RamenActionParam {
+    return copy(
+        noodleGauge = min(7 - ramenStatus.noodle, noodleGauge),
+        soupGauge = min(7 - ramenStatus.soup, soupGauge),
+        toppingGauge = min(7 - ramenStatus.topping, toppingGauge),
+    )
 }

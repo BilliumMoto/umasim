@@ -22,6 +22,7 @@ import io.github.mee1080.umasim.data.*
 import io.github.mee1080.umasim.scenario.Scenario
 import io.github.mee1080.umasim.scenario.climax.MegaphoneItem
 import io.github.mee1080.umasim.scenario.climax.WeightItem
+import io.github.mee1080.umasim.simulation2.MemberState
 import io.github.mee1080.umasim.simulation2.toMemberState
 import io.github.mee1080.umasim.util.SaveDataConverter
 import io.github.mee1080.umasim.web.page.graph.GraphState
@@ -75,6 +76,7 @@ data class State(
     val rawTrainingResult: ExpectedStatus = ExpectedStatus(),
     val trainingImpact: List<Pair<String, Status>> = emptyList(),
     val ramenTastingImpact: List<RamenTastingImpact> = emptyList(),
+    val ramenAllTastingImpact: List<RamenAllTastingImpact> = emptyList(),
     val expectedResult: ExpectedStatus = ExpectedStatus(),
     val upperRate: Double = 0.0,
     val friendProbability: Double = 0.0,
@@ -192,6 +194,12 @@ data class State(
 data class RamenTastingImpact(
     val name: String,
     val status: Status,
+    val impact: Status,
+)
+
+data class RamenAllTastingImpact(
+    val participants: Set<String>,
+    val added: MemberState,
     val impact: Status,
 )
 

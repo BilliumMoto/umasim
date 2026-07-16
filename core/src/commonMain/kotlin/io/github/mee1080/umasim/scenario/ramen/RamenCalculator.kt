@@ -1,11 +1,12 @@
 package io.github.mee1080.umasim.scenario.ramen
 
-import io.github.mee1080.umasim.data.ExpectedStatus
-import io.github.mee1080.umasim.data.Status
-import io.github.mee1080.umasim.data.StatusType
-import io.github.mee1080.umasim.data.trainingType
+import io.github.mee1080.umasim.data.*
+import io.github.mee1080.umasim.scenario.Scenario
 import io.github.mee1080.umasim.scenario.ScenarioCalculator
 import io.github.mee1080.umasim.simulation2.*
+import io.github.mee1080.utility.applyIf
+import io.github.mee1080.utility.mapIf
+import kotlin.math.max
 import kotlin.math.min
 
 object RamenCalculator : ScenarioCalculator {
@@ -103,6 +104,8 @@ object RamenCalculator : ScenarioCalculator {
     override fun updateScenarioTurn(state: SimulationState): SimulationState {
         return state.updateRamenStatus {
             copy(turn = state.turn)
+        }.applyIf({ state.turn >= 73 }) {
+            addStatus(Status(hp = 20, motivation = 1))
         }
     }
 
@@ -111,78 +114,45 @@ object RamenCalculator : ScenarioCalculator {
         goal: Boolean
     ): Array<Action> {
         val status = state.ramenStatus ?: return emptyArray()
-        val availableTasting = status.selectedRegions.filter { region ->
-            val tips = status.tips
-            val hidden = tips[RamenTipType.HIDDEN] ?: 0
+        if (state.turn >= 73 || status.activeTastingRegion != null) return emptyArray()
+        val tips = status.tips
+        val noodle = tips[RamenTipType.NOODLE] ?: 0
+        val soup = tips[RamenTipType.SOUP] ?: 0
+        val topping = tips[RamenTipType.TOPPING] ?: 0
+        val hiddenTips = min(2, status.hiddenTips)
 
-            fun canAfford(type: RamenTipType, amount: Int): Int {
-                return (amount - (tips[type] ?: 0)).coerceAtLeast(0)
+        val actions = mutableListOf<Action>()
+        for (region in status.selectedRegions) {
+            val needNoodle = max(0, region.noodle - noodle)
+            if (needNoodle > hiddenTips) continue
+            for (cn in needNoodle..min(hiddenTips, region.noodle)) {
+                val hiddenTips2 = hiddenTips - cn
+                val needSoup = max(0, region.soup - soup)
+                if (needSoup > hiddenTips2) continue
+                for (cs in needSoup..min(hiddenTips2, region.soup)) {
+                    val hiddenTips3 = hiddenTips2 - cs
+                    val needTopping = max(0, region.topping - topping)
+                    if (needTopping > hiddenTips3) continue
+                    for (ct in needTopping..min(hiddenTips3, region.topping)) {
+                        val changeHiddenList = buildList {
+                            repeat(cn) { add(RamenTipType.NOODLE) }
+                            repeat(cs) { add(RamenTipType.SOUP) }
+                            repeat(ct) { add(RamenTipType.TOPPING) }
+                        }
+                        actions.add(RamenTasting(region, changeHiddenList))
+                    }
+                }
             }
-
-            val neededHidden = canAfford(RamenTipType.NOODLE, region.noodle) +
-                    canAfford(RamenTipType.SOUP, region.soup) +
-                    canAfford(RamenTipType.TOPPING, region.topping)
-
-            hidden >= neededHidden
         }
-        return availableTasting.map { RamenTasting(it) }.toTypedArray()
+        return actions.toTypedArray()
     }
 
     override fun modifyShuffledMember(
         state: SimulationState,
         member: List<MemberState>
     ): List<MemberState> {
-        val ramenStatus = state.ramenStatus ?: return member
-        val region = ramenStatus.activeTastingRegion?.first ?: return member
-        if (region.targetAll) return member
-
-        var currentMember = member
-        val supportPosition = trainingType.associateWith { type ->
-            currentMember.filter { it.positions.contains(type) }.toMutableList()
-        }
-
-        // hintCount logic
-        if (region.hintCount > 0) {
-            val targets = currentMember.filter {
-                !it.guest && !it.outingType && region.targetTypes.contains(it.card.type) && it.positions.isNotEmpty()
-            }
-            val notHintTargets = targets.filter { !it.hint }
-            val alreadyHintCount = targets.size - notHintTargets.size
-            val needMore = region.hintCount - alreadyHintCount
-            if (needMore > 0) {
-                val toAddIndices = notHintTargets.shuffled().take(needMore).map { it.index }.toSet()
-                currentMember = currentMember.map {
-                    if (toAddIndices.contains(it.index)) {
-                        it.copy(supportState = it.supportState?.copy(hintIcon = true))
-                    } else it
-                }
-            }
-        }
-
-        // addMember logic
-        if (region.addMember > 0) {
-            val candidates = currentMember.filter { !it.guest && it.position != StatusType.NONE }.shuffled()
-            if (candidates.isNotEmpty()) {
-                for (i in 0 until region.addMember) {
-                    val targetCandidate = candidates[i % candidates.size]
-                    val target = currentMember.first { it.index == targetCandidate.index }
-                    val possibleTrainings = region.targetTypes.filter { type ->
-                        supportPosition[type]!!.size < 5 && !target.positions.contains(type)
-                    }
-                    if (possibleTrainings.isNotEmpty()) {
-                        val selectedTraining = possibleTrainings.random()
-                        supportPosition[selectedTraining]!!.add(target)
-                        currentMember = currentMember.map {
-                            if (it.index == target.index) {
-                                it.copy(additionalPosition = it.additionalPosition + selectedTraining)
-                            } else it
-                        }
-                    }
-                }
-            }
-        }
-
-        return currentMember
+        if (state.turn <= 72) return member
+        return addmember(member, trainingType.toList())
     }
 
     override fun predictScenarioActionParams(
@@ -190,12 +160,17 @@ object RamenCalculator : ScenarioCalculator {
         baseActions: List<Action>
     ): List<Action> {
         val ramenStatus = state.ramenStatus ?: return baseActions
-        val baseParam = ramenStatus.baseGauge
+        if (state.turn >= 73) return baseActions
+        val baseParam = (if (Scenario.RAMEN.levelUpTurns.contains(state.turn)) {
+            RamenActionParam(7, 7, 7)
+        } else ramenStatus.baseGauge).adjustMax(ramenStatus)
         return baseActions.map { action ->
             when (action) {
                 is Training -> {
-                    // TODO トレーニング配置コツ+2 他
-                    val param = baseParam.add(ramenStatus.trainingTip[action.type]!!)
+                    val tipType = ramenStatus.trainingTip[action.type]!!
+                    val tipCount = 1 + action.member.sumOf { if (it.guest) 1 else 2 } / 2
+                    val param = baseParam.add(tipType, tipCount, action.friendTraining)
+                        .adjustMax(ramenStatus)
                     action.copy(
                         candidates = action.addScenarioActionParam(param)
                     )
@@ -210,22 +185,112 @@ object RamenCalculator : ScenarioCalculator {
         }
     }
 
+    override fun calcBaseRaceStatus(
+        state: SimulationState,
+        race: RaceEntry,
+        goal: Boolean
+    ): Status? {
+        if (!goal || race.grade == RaceGrade.FINALS) return null
+        val bonusValue = 5 * 150 * (100 + state.totalRaceBonus) / 10000
+        val targets = trainingType.map { it to bonusValue }.toTypedArray()
+        return Status(skillPt = 45 * 150 * (100 + state.totalRaceBonus) / 10000).add(*targets)
+    }
+
+    override fun applyScenarioRaceBonus(
+        state: SimulationState,
+        base: Status
+    ): Status {
+        return if (state.turn >= 73) base * 2 else base
+    }
+
     fun applyScenarioAction(state: SimulationState, result: ActionResult): SimulationState {
         return when (result) {
-            is RamenSelectRegionResult -> {
-                state.updateRamenStatus {
-                    addRegion(result.region)
-                }
-            }
-
-            is RamenTastingResult -> {
-                state.updateRamenStatus {
-                    activateTasting(result.region)
-                }
-            }
-
+            is RamenSelectRegionResult -> applyRamenSelectRegionResult(state, result)
+            is RamenTastingResult -> applyRamenTastingResult(state, result)
             else -> state
         }
+    }
+
+    private fun applyRamenSelectRegionResult(state: SimulationState, result: RamenSelectRegionResult): SimulationState {
+        return state.updateRamenStatus {
+            addRegion(result.region)
+        }.applyIf({ result.region.hintSkill.isNotEmpty() }) {
+            addStatus(Status(skillHint = mapOf(result.region.hintSkill to 2))).updateRamenStatus {
+                copy(
+                    activeTastingRegion = result.region to 0,
+                )
+            }
+        }
+    }
+
+    private fun applyRamenTastingResult(state: SimulationState, result: RamenTastingResult): SimulationState {
+        val ramenStatus = state.ramenStatus ?: return state
+        val region = result.region
+        var newState = state.updateRamenStatus {
+            activateTasting(region, result.changeHiddenTips)
+        }
+
+        // relationGauge: 絆上昇
+        val baseEffect = ramenBaseEffect.getOrElse(ramenStatus.period) { RamenBaseEffect.Empty }
+        if (baseEffect.relationGauge > 0) {
+            newState = newState.addRelationAll(baseEffect.relationGauge)
+        }
+
+        // hintCount: targetTypesのサポカのヒント獲得
+        repeat(region.hintCount) {
+            newState = newState.addRandomSupportHint(region.targetTypes)
+        }
+
+        // addMember: targetTypesのトレーニングに、未参加のサポートカードを1種追加で参加させる
+        repeat(region.addMember) {
+            newState = newState.copy(
+                member = addmember(
+                    newState.member,
+                    if (region.targetAll) trainingType.toList() else region.targetTypes,
+                )
+            )
+        }
+
+        return newState
+    }
+
+    private fun addmember(
+        memberList: List<MemberState>,
+        targetTypes: List<StatusType>,
+    ): List<MemberState> {
+        val supportMember = memberList.filter { !it.guest && !it.outingType }
+        val candidates = supportMember.filter { it.positions.isEmpty() }.shuffled().toMutableList()
+        val positionMap = buildMap {
+            memberList.forEach { member ->
+                member.positions.forEach { type ->
+                    getOrPut(type) { mutableListOf() }.add(member)
+                }
+            }
+        }
+        var newMemberList = memberList
+        targetTypes.forEach { targetType ->
+            val positioned = positionMap[targetType] ?: emptyList()
+            val positionedSupport = positioned.filter { !it.guest }.map { it.index }.toSet()
+            if (positionedSupport.size >= 5) return@forEach
+            var targetIndex = candidates.indexOfFirst { !positionedSupport.contains(it.index) }
+            if (targetIndex == -1 && candidates.size < 6) {
+                candidates += supportMember.shuffled()
+                targetIndex = candidates.indexOfFirst { !positionedSupport.contains(it.index) }
+                if (targetIndex == -1) return@forEach
+            }
+            val target = candidates.removeAt(targetIndex)
+            newMemberList = newMemberList.mapIf({ it.index == target.index }) {
+                it.copy(additionalPosition = it.additionalPosition + targetType)
+            }
+            if (positioned.size >= 5) {
+                val removeIndex = positioned.last { it.guest }.index
+                newMemberList = newMemberList.mapIf({ it.index == removeIndex }) {
+                    it.copy(position = StatusType.NONE)
+                }
+            }
+        }
+
+        return newMemberList
     }
 
     fun applyScenarioActionParam(state: SimulationState, param: RamenActionParam): SimulationState {
@@ -234,7 +299,7 @@ object RamenCalculator : ScenarioCalculator {
                 param.noodleGauge,
                 param.soupGauge,
                 param.toppingGauge
-            ).addHiddenTaste(param.hiddenTaste)
+            )
         }
     }
 
@@ -251,11 +316,6 @@ object RamenCalculator : ScenarioCalculator {
     override fun getFailureRateDown(state: SimulationState): Int {
         val ramenStatus = state.ramenStatus ?: return 0
         return ramenStatus.baseEffect.failureRateDown
-    }
-
-    override fun getTrainingRelationBonus(state: SimulationState): Int {
-        val ramenStatus = state.ramenStatus ?: return 0
-        return ramenStatus.baseEffect.relationGauge
     }
 
     override fun isAllSupportHint(state: SimulationState, position: StatusType): Boolean {

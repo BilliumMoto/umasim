@@ -42,6 +42,7 @@ import io.github.mee1080.umasim.scenario.onsen.StratumType
 import io.github.mee1080.umasim.scenario.ramen.RamenRegion
 import io.github.mee1080.umasim.scenario.ramen.RamenTipType
 import io.github.mee1080.umasim.scenario.uaf.UafGenre
+import io.github.mee1080.utility.applyIf
 
 sealed interface Action {
     val name: String
@@ -616,23 +617,8 @@ data class RamenActionParam(
     val noodleGauge: Int = 0,
     val soupGauge: Int = 0,
     val toppingGauge: Int = 0,
-    val hiddenTaste: Int = 0,
 ) : ScenarioActionParam {
-    override fun toShortString() = buildList {
-        if (noodleGauge > 0) add("麺:$noodleGauge")
-        if (soupGauge > 0) add("スープ:$soupGauge")
-        if (toppingGauge > 0) add("トッピング:$toppingGauge")
-        if (hiddenTaste > 0) add("隠し味:$hiddenTaste")
-    }.joinToString(", ")
-
-    fun add(type: RamenTipType): RamenActionParam {
-        return when (type) {
-            RamenTipType.NOODLE -> copy(noodleGauge = noodleGauge + 2)
-            RamenTipType.SOUP -> copy(soupGauge = soupGauge + 2)
-            RamenTipType.TOPPING -> copy(toppingGauge = toppingGauge + 2)
-            else -> this
-        }
-    }
+    override fun toShortString() = "$noodleGauge/$soupGauge/$toppingGauge"
 }
 
 sealed interface RamenActionResult : ActionResult
@@ -651,12 +637,32 @@ data class RamenSelectRegion(
 
 data class RamenTastingResult(
     val region: RamenRegion,
+    val changeHiddenTips: List<RamenTipType> = emptyList(),
 ) : RamenActionResult
 
 data class RamenTasting(
     val region: RamenRegion,
+    val changeHiddenTips: List<RamenTipType> = emptyList(),
 ) : SingleAction {
-    override val name = "試食会: ${region.displayName}"
+    override val name = buildString {
+        append("試食会: ")
+        append(region.displayName)
+        if (changeHiddenTips.isNotEmpty()) {
+            append(" [")
+            append(changeHiddenTips.joinToString(",") { it.displayName })
+            append(" -> 隠し味]")
+        }
+    }
     override val turnChange = false
-    override val result = RamenTastingResult(region)
+    override val result = RamenTastingResult(region, changeHiddenTips)
+    override fun infoToString(): String {
+        if (changeHiddenTips.isEmpty()) return ""
+        val counts = changeHiddenTips.groupingBy { it }.eachCount()
+        val parts = counts.map { "${it.key.displayName}${it.value}変更" }
+        return "(${parts.joinToString(", ")})"
+    }
+
+    val useNoodle by lazy { region.noodle - changeHiddenTips.count { it == RamenTipType.NOODLE } }
+    val useSoup by lazy { region.soup - changeHiddenTips.count { it == RamenTipType.SOUP } }
+    val useTopping by lazy { region.topping - changeHiddenTips.count { it == RamenTipType.TOPPING } }
 }

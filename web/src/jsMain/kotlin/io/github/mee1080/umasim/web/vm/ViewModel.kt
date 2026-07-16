@@ -78,6 +78,7 @@ class ViewModel(val scope: CoroutineScope, initialPage: String?) {
         scope.launch {
             var newState = update(state)
             if (calculate) {
+                newState = newState.copy(ramenAllTastingImpact = emptyList())
                 newState = calculate(newState)
                 newState = calculateBonus(newState)
             }
@@ -89,6 +90,7 @@ class ViewModel(val scope: CoroutineScope, initialPage: String?) {
         withContext(Dispatchers.Main) {
             var newState = update(state)
             if (calculate) {
+                newState = newState.copy(ramenAllTastingImpact = emptyList())
                 newState = calculate(newState)
                 newState = calculateBonus(newState)
             }
@@ -408,23 +410,42 @@ class ViewModel(val scope: CoroutineScope, initialPage: String?) {
         if (state.scenario == Scenario.RAMEN && state.ramenState.turn in 25..72 && state.ramenState.activeTastingRegion != null) {
             val ramenStatus = scenarioStatus as? RamenStatus
             val region = state.ramenState.activeTastingRegion
-            if (ramenStatus != null && (region.targetAll || region.targetTypes.contains(trainingType))) {
-                val noTastingStatus = ramenStatus.copy(activeTastingRegion = null)
-                val noTastingInfo = trainingCalcInfo.copy(scenarioStatus = noTastingStatus)
-                val s2 = Calculator.calcTrainingSuccessStatusSeparated(
-                    noTastingInfo,
-                    state.scenario.calculator.getScenarioCalcBonus(noTastingInfo)
-                ).let { it.first.first + it.second }
-                ramenTastingImpact = allSupportList.filter { support ->
-                    !joinSupportList.any { it.card.id == support.card.id } && !support.card.type.outingType
-                }.map { support ->
-                    val withSupportJoinList = joinSupportList + support
-                    val withSupportInfo = trainingCalcInfo.copy(member = withSupportJoinList)
-                    val s1 = Calculator.calcTrainingSuccessStatusSeparated(
-                        withSupportInfo,
-                        state.scenario.calculator.getScenarioCalcBonus(withSupportInfo)
+            if (ramenStatus != null) {
+                if (region.targetAll || region.targetTypes.contains(trainingType)) {
+                    val noTastingStatus = ramenStatus.copy(activeTastingRegion = null)
+                    val noTastingInfo = trainingCalcInfo.copy(scenarioStatus = noTastingStatus)
+                    val s2 = Calculator.calcTrainingSuccessStatusSeparated(
+                        noTastingInfo,
+                        state.scenario.calculator.getScenarioCalcBonus(noTastingInfo)
                     ).let { it.first.first + it.second }
-                    RamenTastingImpact(support.name, s1, s1 - s2)
+                    ramenTastingImpact = allSupportList.filter { support ->
+                        !joinSupportList.any { it.card.id == support.card.id } && !support.card.type.outingType
+                    }.map { support ->
+                        val withSupportJoinList = joinSupportList + support
+                        val withSupportInfo = trainingCalcInfo.copy(member = withSupportJoinList)
+                        val s1 = Calculator.calcTrainingSuccessStatusSeparated(
+                            withSupportInfo,
+                            state.scenario.calculator.getScenarioCalcBonus(withSupportInfo)
+                        ).let { it.first.first + it.second }
+                        RamenTastingImpact(support.name, s1, s1 - s2)
+                    }
+                } else {
+                    val noTastingStatus = ramenStatus.copy(activeTastingRegion = null)
+                    val noTastingInfo = trainingCalcInfo.copy(scenarioStatus = noTastingStatus)
+                    val s2 = Calculator.calcTrainingSuccessStatusSeparated(
+                        noTastingInfo,
+                        state.scenario.calculator.getScenarioCalcBonus(noTastingInfo)
+                    ).let { it.first.first + it.second }
+
+                    val s1Info = trainingCalcInfo
+                    val s1 = Calculator.calcTrainingSuccessStatusSeparated(
+                        s1Info,
+                        state.scenario.calculator.getScenarioCalcBonus(s1Info)
+                    ).let { it.first.first + it.second }
+
+                    ramenTastingImpact = listOf(
+                        RamenTastingImpact("追加出現なし", s1, s1 - s2)
+                    )
                 }
             }
         }
@@ -857,5 +878,93 @@ class ViewModel(val scope: CoroutineScope, initialPage: String?) {
 
     fun updateRamen(update: RamenState.() -> RamenState) {
         update { copy(ramenState = ramenState.update()) }
+    }
+
+    fun calculateRamenAllPatterns() {
+        val state = state
+        if (state.scenario != Scenario.RAMEN) return
+        val ramenStatus = state.scenarioStatus as? RamenStatus ?: return
+        val region = state.ramenState.activeTastingRegion ?: return
+        val trainingType = state.selectedTrainingTypeForScenario
+        if (!(region.targetAll || region.targetTypes.contains(trainingType))) return
+
+        scope.launch(Dispatchers.Default) {
+            val allSupportList = state.supportSelectionList.filter { it.card != null }
+                .mapIndexedNotNull { index, support -> support.toMemberState(state.scenario, index) }
+
+            val supportCount =
+                state.supportSelectionList.mapNotNull { it.card?.type }.groupBy { it }.mapValues { it.value.size }
+
+            val trainingLevel = if (state.isLevelUpTurn) 5 else state.trainingLevel
+            val trainingBase = WebConstants.trainingList[state.scenario]!!.first {
+                it.type == trainingType && it.level == trainingLevel
+            }
+
+            val baseInfo = Calculator.CalcInfo(
+                state.chara,
+                trainingBase,
+                state.motivation,
+                emptyList(),
+                state.scenario,
+                supportCount,
+                state.fanCount,
+                Status(maxHp = state.maxHp, hp = state.hp),
+                state.totalRelation,
+                state.speedSkillCount,
+                state.healSkillCount,
+                state.accelSkillCount,
+                state.totalTrainingLevel,
+                state.isLevelUpTurn,
+                ramenStatus,
+            ).setTeamMember(state.teamJoinCount)
+
+            val noTastingStatus = ramenStatus.copy(activeTastingRegion = null)
+            val scenarioCalculator = state.scenario.calculator
+
+            val results = mutableListOf<RamenAllTastingImpact>()
+            val n = allSupportList.size
+            for (i in 0 until (1 shl n)) {
+                val baseSupport = mutableListOf<MemberState>()
+                val remaining = mutableListOf<MemberState>()
+                for (j in 0 until n) {
+                    if ((i shr j) and 1 == 1) {
+                        baseSupport.add(allSupportList[j])
+                    } else {
+                        remaining.add(allSupportList[j])
+                    }
+                }
+
+                if (baseSupport.size > 4) continue
+
+                val s2Info = baseInfo.copy(member = baseSupport, scenarioStatus = noTastingStatus)
+                val s2 = Calculator.calcTrainingSuccessStatusSeparated(
+                    s2Info,
+                    scenarioCalculator.getScenarioCalcBonus(s2Info)
+                ).let { it.first.first + it.second }
+
+                for (addSupport in remaining) {
+                    if (addSupport.card.type.outingType) continue
+
+                    val s1Info = baseInfo.copy(member = baseSupport + addSupport, scenarioStatus = ramenStatus)
+                    val s1 = Calculator.calcTrainingSuccessStatusSeparated(
+                        s1Info,
+                        scenarioCalculator.getScenarioCalcBonus(s1Info)
+                    ).let { it.first.first + it.second }
+
+                    results.add(
+                        RamenAllTastingImpact(
+                            participants = baseSupport.map { it.charaName }.toSet(),
+                            added = addSupport,
+                            impact = s1 - s2
+                        )
+                    )
+                }
+            }
+            results.sortByDescending { it.impact.totalPlusSkillPt }
+
+            withContext(Dispatchers.Main) {
+                updateState(calculate = false) { it.copy(ramenAllTastingImpact = results) }
+            }
+        }
     }
 }

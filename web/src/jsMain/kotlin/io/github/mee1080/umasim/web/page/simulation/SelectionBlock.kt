@@ -64,10 +64,15 @@ fun SelectionBlock(
         }
         selection.forEachIndexed { index, action ->
             val uafStatus = state.uafStatus
+            val ramenStatus = state.ramenStatus
             val (actionName, uafAthletic, uafAthleticLevel) = if (uafStatus != null && action is Training) {
                 val athletic = uafStatus.trainingAthletics[action.type]!!
                 val level = uafStatus.athleticsLevel[athletic]!!
                 Triple("トレーニング(${action.type.displayName}/${athletic.longDisplayName}Lv$level)", athletic, level)
+            } else if (ramenStatus != null && action is Training) {
+                val tip = ramenStatus.trainingTip[action.type]
+                val suffix = if (tip != null) " / ${tip.displayName}" else ""
+                Triple("トレーニング(${action.type.displayName}$suffix)", null, 0)
             } else Triple(action.name, null, 0)
             Card({
                 style {
@@ -96,6 +101,7 @@ fun SelectionBlock(
                         CookMaterialInfo(action)
                         LegendInfo(action)
                         OnsenInfo(action)
+                        RamenParamInfo(state, action)
                     }
 
                     is Race -> {
@@ -103,6 +109,7 @@ fun SelectionBlock(
                         LegendInfo(action)
                         MujintoInfo(action)
                         OnsenInfo(action)
+                        RamenParamInfo(state, action)
                         StatusTable(action.result.status)
                     }
 
@@ -120,6 +127,7 @@ fun SelectionBlock(
                         CookMaterialInfo(action)
                         LegendInfo(action)
                         OnsenInfo(action)
+                        RamenParamInfo(state, action)
                     }
 
                     is Training -> {
@@ -129,6 +137,7 @@ fun SelectionBlock(
                         MujintoInfo(action)
                         OnsenInfo(action)
                         BCInfo(action)
+                        RamenParamInfo(state, action)
                         if (uafStatus != null && uafAthletic != null) {
                             val actionResult = action.candidates[0].first as? StatusActionResult
                             val param = actionResult?.scenarioActionParam as UafScenarioActionParam?
@@ -244,9 +253,13 @@ fun SelectionBlock(
 
                     is BCTeamParameterUp -> {}
 
-                    is RamenSelectRegion -> {}
+                    is RamenSelectRegion -> {
+                        RamenSelectRegionInfo(action)
+                    }
 
-                    is RamenTasting -> {}
+                    is RamenTasting -> {
+                        RamenTastingInfo(action)
+                    }
                 }
                 val targetAiScore = aiScore.getOrNull(index)
                 if (aiSelection == action || targetAiScore != null) {
