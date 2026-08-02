@@ -181,6 +181,11 @@ fun TrainingInfo(model: ViewModel, state: State) {
                 model.updateTeamJoinCount(it.toInt())
             }
         }
+        DivFlexCenter {
+            MdCheckbox("トレーニング制限イベント（スイープのみ確認済）", state.eventTrainingLimit) {
+                onChange { model.update { copy(eventTrainingLimit = it) } }
+            }
+        }
         if (state.scenario == Scenario.CLIMAX) {
             DivFlexCenter {
                 Text("メガホン：")

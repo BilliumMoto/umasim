@@ -97,21 +97,22 @@ open class RamenActionSelector(
         val s3h1w1 = buildList {
             val base = Option(
                 status = 100,
-                wisdom = 95,
+                speed = 55,
+                wisdom = 55,
                 skillPt = 200,
-                hp = 100,
+                hp = 95,
                 motivation = 1000,
                 relation = 4000,
-                outingRelation = 2000,
-                hpKeep = 450,
-                risk = 50,
-                tastingThreashold = 500,
-                speedTastingFactor = 100,
-                staminaTastingFactor = 100,
-                wisdomTastingFactor = 110,
-                tastingMinFailureRate = 20,
-                gaugeScore = 0,
-                gaugeMaxScore = 2500,
+                outingRelation = 8000,
+                hpKeep = 400,
+                risk = 250,
+                tastingThreashold = 600,
+                speedTastingFactor = 90,
+                staminaTastingFactor = 120,
+                wisdomTastingFactor = 150,
+                tastingMinFailureRate = 10,
+                gaugeScore = 200,
+                gaugeMaxScore = 1000,
                 regions = setOf(
                     // Junior (Period 0)
                     RamenRegion.SAPPORO,
@@ -132,32 +133,34 @@ open class RamenActionSelector(
             add(base)
             add(
                 base.copy(
-                    wisdom = 120,
-                    hp = 95,
+                    speed = 95,
+                    wisdom = 50,
+                    hp = 90,
                     hpKeep = 500,
-                    risk = 250,
-                    tastingThreashold = 500,
+                    risk = 100,
+                    tastingThreashold = 700,
                     allTastingFactor = 60,
-                    staminaTastingFactor = 100,
-                    wisdomTastingFactor = 80,
+                    staminaTastingFactor = 120,
+                    wisdomTastingFactor = 140,
                     tastingMinFailureRate = 20,
-                    gaugeScore = 100,
-                    gaugeMaxScore = 0,
+                    gaugeScore = 1400,
+                    gaugeMaxScore = 1000,
                 )
             )
             add(
                 base.copy(
-                    wisdom = 120,
-                    hp = 95,
+                    speed = 45,
+                    wisdom = 70,
+                    hp = 100,
                     hpKeep = 50,
-                    risk = 125,
+                    risk = 75,
                     tastingThreashold = 700,
-                    speedTastingFactor = 80,
-                    staminaTastingFactor = 150,
-                    wisdomTastingFactor = 80,
+                    speedTastingFactor = 70,
+                    staminaTastingFactor = 140,
+                    wisdomTastingFactor = 140,
                     tastingMinFailureRate = 100,
-                    gaugeScore = 1700,
-                    gaugeMaxScore = 7500,
+                    gaugeScore = 700,
+                    gaugeMaxScore = 9000,
                 )
             )
             add(
@@ -179,6 +182,10 @@ open class RamenActionSelector(
     @Serializable
     data class Option(
         val status: Int = 100,
+        override val speed: Int = status,
+        override val stamina: Int = status,
+        override val power: Int = status,
+        override val guts: Int = status,
         override val wisdom: Int = 80,
         override val skillPt: Int = 100,
         override val hp: Int = 400,
@@ -199,10 +206,6 @@ open class RamenActionSelector(
         val gaugeMaxScore: Int = 2000,
         val regions: Set<RamenRegion> = emptySet(),
     ) : SerializableActionSelectorGenerator, BaseOption {
-        override val speed get() = status
-        override val stamina get() = status
-        override val power get() = status
-        override val guts get() = status
         override val maxSleep get() = 0
 
         val typeTastingFactor = mapOf(
