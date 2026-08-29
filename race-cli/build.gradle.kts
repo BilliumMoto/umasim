@@ -24,6 +24,15 @@ kotlin {
 
 application {
     mainClass.set("io.github.mee1080.umasim.race.cli.RaceCliKt")
+    applicationDefaultJvmArgs = listOf(
+        "-Xms16m",
+        "-Xmx64m",
+        "-XX:+UseSerialGC",
+        "-XX:ReservedCodeCacheSize=32m",
+        "-Xss512k",
+        "-XX:ErrorFile=race-cli/build/crash-logs/hs_err_pid%p.log",
+        "-XX:ReplayDataFile=race-cli/build/crash-logs/replay_pid%p.log",
+    )
 }
 
 val fatJar by tasks.registering(Jar::class) {

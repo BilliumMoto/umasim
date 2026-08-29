@@ -58,6 +58,9 @@ private fun checkCondition(
 ): (RaceState.() -> Boolean)? {
     return when (condition.type) {
         "motivation" -> condition.preChecked(baseSetting.umaStatus.condition.value)
+        "succession_skill_count" -> condition.preChecked(
+            baseSetting.umaStatus.hasSkills.count { it.rarity == "inherit" }
+        )
         "hp_per" -> condition.checkInRace { (simulation.sp / setting.spMax * 100).toInt() }
         "activate_count_heal" -> condition.checkInRace { simulation.healTriggerCount }
         "activate_count_all" -> condition.checkInRace { simulation.skillTriggerCount.total }
@@ -297,10 +300,8 @@ private fun checkCondition(
         }
 
         else -> {
-            if (!ignoreConditions.containsKey(condition.type)) {
-                println("not supported condition: $condition")
-            }
-            return null
+            if (ignoreConditions.containsKey(condition.type)) return null
+            throw IllegalArgumentException("Unsupported skill condition: $condition")
         }
     }
 }
@@ -311,8 +312,7 @@ private fun SkillCondition.withAssert(
     check: SkillCondition.() -> (RaceState.() -> Boolean)
 ): RaceState.() -> Boolean {
     return if (this.operator != operator || (value != null && this.value != value)) {
-        println("not supported : ${this.type} ${this.operator} ${this.value}")
-        return { true }
+        throw IllegalArgumentException("Unsupported skill condition form: $this")
     } else check()
 }
 

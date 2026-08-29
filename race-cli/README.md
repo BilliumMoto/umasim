@@ -21,23 +21,24 @@ race-cli\build\libs\race-cli-1.0-all.jar
 From the repository root:
 
 ```powershell
-java -jar race-cli\build\libs\race-cli-1.0-all.jar input.json
+.\race-cli\run.ps1 input.json
 ```
 
 Or via stdin:
 
 ```powershell
-Get-Content input.json | java -jar race-cli\build\libs\race-cli-1.0-all.jar
+Get-Content input.json | .\race-cli\run.ps1
 ```
 
 The default `dataDir` is `data`, relative to the process working directory. If calling from another project, either set `cwd` to the umasim repo root or pass an absolute `dataDir`.
+The launcher stores JVM crash logs under `race-cli\build\crash-logs` instead of the repository root.
 
 ## Data Dump Mode
 
 Use `--data` to dump simulator reference data as JSON without running a race:
 
 ```powershell
-java -jar race-cli\build\libs\race-cli-1.0-all.jar --data track --data-dir data
+.\race-cli\run.ps1 --data track --data-dir data
 ```
 
 The output shape is:
@@ -105,6 +106,8 @@ from pathlib import Path
 
 repo_root = Path(r"F:\Programming\Games\umasim")
 jar_path = repo_root / r"race-cli\build\libs\race-cli-1.0-all.jar"
+crash_log_dir = repo_root / r"race-cli\build\crash-logs"
+crash_log_dir.mkdir(parents=True, exist_ok=True)
 
 request = {
     "count": 100,
@@ -120,7 +123,13 @@ request = {
 }
 
 completed = subprocess.run(
-    ["java", "-jar", str(jar_path)],
+    [
+        "java",
+        f"-XX:ErrorFile={crash_log_dir / 'hs_err_pid%p.log'}",
+        f"-XX:ReplayDataFile={crash_log_dir / 'replay_pid%p.log'}",
+        "-jar",
+        str(jar_path),
+    ],
     input=json.dumps(request, ensure_ascii=False),
     text=True,
     capture_output=True,
