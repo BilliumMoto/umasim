@@ -62,9 +62,9 @@ class RaceCalculator(
         )
         val settingWithPassive = applyPassive(system, simulationState)
         simulationState.passiveTriggered = settingWithPassive.passiveBonus.skills.size
-        settingWithPassive.passiveBonus.skills.forEach {
-            simulationState.coolDownMap[it.invoke.coolDownId] = 0
-        }
+//        settingWithPassive.passiveBonus.skills.forEach {
+//            simulationState.coolDownMap[it.invoke.coolDownId] = 0
+//        }
 
         val virtualLeader = if (!isVirtualLeader && positionKeepMode == PositionKeepMode.VIRTUAL) {
             copy(umaStatus = virtualLeader, positionKeepMode = PositionKeepMode.SPEED_UP).initializeState(
@@ -131,15 +131,15 @@ private fun RaceSetting.invokeSkills(): List<InvokedSkill> {
                 it.applyLevel(umaStatus.uniqueLevel)
             } else it
         }.forEach { skill ->
-            val calculatedAreas = mutableMapOf<String, List<RandomEntry>>()
+            val calculatedConditions = CalculatedConditions()
             if (skill.activateLot == 0 || Random.nextDouble() * 100 < invokeRate) {
                 skill.invokes.forEach { invoke ->
                     add(
                         InvokedSkill(
                             skill,
                             invoke,
-                            checkCondition(skill, invoke.preConditions, this@invokeSkills, calculatedAreas),
-                            checkCondition(skill, invoke.conditions, this@invokeSkills, calculatedAreas),
+                            checkCondition(skill, invoke.preConditions, this@invokeSkills, calculatedConditions),
+                            checkCondition(skill, invoke.conditions, this@invokeSkills, calculatedConditions),
                         )
                     )
                 }
@@ -151,6 +151,9 @@ private fun RaceSetting.invokeSkills(): List<InvokedSkill> {
 private fun RaceSetting.applyPassive(system: SystemSetting, simulation: RaceSimulationState): RaceSettingWithPassive {
     var passiveBonus = PassiveBonus()
     val stateForCheck = RaceState(RaceSettingWithPassive(this, passiveBonus), simulation, system, null)
+    if (simulation.invokedSkills.any { it.invoke.isIgnorePopularity && it.check(stateForCheck) }) {
+        simulation.ignorePopularity = true
+    }
     simulation.invokedSkills.forEach { skill ->
         if (skill.invoke.isPassive && skill.check(stateForCheck)) {
             passiveBonus = passiveBonus.add(stateForCheck, skill)
@@ -162,15 +165,17 @@ private fun RaceSetting.applyPassive(system: SystemSetting, simulation: RaceSimu
 private fun RaceState.triggerStartSkills() {
     val skills = mutableListOf<TriggeredSkill>()
     setting.passiveBonus.skills.forEach { skill ->
-        if (!skill.invoke.isStart) {
+        if (!skill.invoke.isStart && !simulation.coolDownMap.containsKey(skill.invoke.coolDownId)) {
             skills += triggerSkill(skill)
+            simulation.coolDownMap[skill.invoke.coolDownId] = 0
         }
     }
     simulation.invokedSkills.forEach { skill ->
-        if (skill.invoke.isStart) {
+        if (skill.invoke.isStart && !simulation.coolDownMap.containsKey(skill.invoke.coolDownId)) {
             simulation.startDelay *= skill.invoke.startMultiply(this)
             simulation.startDelay += skill.invoke.startAdd(this)
             skills += triggerSkill(skill)
+            simulation.coolDownMap[skill.invoke.coolDownId] = 0
         }
     }
     simulation.addFrame(
@@ -227,6 +232,8 @@ private fun RaceState.updateFrame(): Boolean {
         secureLead = simulation.secureLead,
         staminaLimitBreak = simulation.staminaLimitBreak,
         fullSpurt = simulation.fullSpurt,
+        fullSpurtTargetSpeed = fullSpurtTargetSpeed,
+        fullSpurtCurrentSpeed = simulation.fullSpurtCurrentSpeed,
         paceMakerFrame = paceMaker?.simulation?.frames?.lastOrNull(),
     )
     // 1秒おき判定

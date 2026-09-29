@@ -849,6 +849,7 @@ class RaceSimulationState(
     var passiveTriggered: Int = 0,
     var healTriggerCount: Int = 0,
     var startDelayCount: Int = 0,
+    var ignorePopularity: Boolean = false,
     var sectionTargetSpeedRandoms: Map<Int, Double> = emptyMap(),
     var evoDurationMultiplier: Double = 1.0,
 
@@ -954,6 +955,8 @@ data class RaceFrame(
     val secureLead: Boolean = false,
     val staminaLimitBreak: Boolean = false,
     val fullSpurt: Boolean = false,
+    val fullSpurtTargetSpeed: Double = 0.0,
+    val fullSpurtCurrentSpeed: Double = 0.0,
     val triggeredDebuffs: List<DebuffType> = emptyList(),
     val paceMakerFrame: RaceFrame? = null,
 )

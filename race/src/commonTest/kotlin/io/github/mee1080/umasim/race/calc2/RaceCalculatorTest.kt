@@ -33,7 +33,7 @@ class RaceCalculatorTest {
                 testSkill("normal"),
                 listOf(listOf(SkillCondition("future_condition", "==", 1))),
                 RaceSetting(),
-                mutableMapOf(),
+                CalculatedConditions(),
             )
         }
         assertFailsWith<IllegalArgumentException> {
@@ -41,7 +41,7 @@ class RaceCalculatorTest {
                 testSkill("normal"),
                 listOf(listOf(SkillCondition("always", "!=", 1))),
                 RaceSetting(),
-                mutableMapOf(),
+                CalculatedConditions(),
             )
         }
     }
@@ -59,7 +59,7 @@ class RaceCalculatorTest {
             testSkill("normal"),
             listOf(listOf(SkillCondition("succession_skill_count", ">=", 3))),
             setting,
-            mutableMapOf(),
+            CalculatedConditions(),
         )
         return check(state)
     }
@@ -71,4 +71,24 @@ class RaceCalculatorTest {
         group = 0,
         type = "speed",
     )
+
+    @Test
+    fun testFullSpurtFrameRecording() {
+        val setting = RaceSetting(
+            umaStatus = UmaStatus(speed = 2200)
+        )
+        val calculator = RaceCalculator(SystemSetting())
+        val (_, state) = calculator.simulate(setting)
+
+        val fullSpurtFrames = state.simulation.frames.filter { it.fullSpurt }
+        if (fullSpurtFrames.isNotEmpty()) {
+            fullSpurtFrames.forEach { frame ->
+                assertTrue(frame.fullSpurtTargetSpeed > 0.0, "fullSpurtTargetSpeed should be recorded when fullSpurt is active")
+                val normalTargetSpeed = frame.targetSpeed - frame.fullSpurtTargetSpeed
+                val normalCurrentSpeed = frame.speed - frame.fullSpurtCurrentSpeed
+                val speedDiff = normalTargetSpeed - normalCurrentSpeed
+                assertTrue(!speedDiff.isNaN() && !speedDiff.isInfinite(), "speedDiff without fullSpurt should be a finite double")
+            }
+        }
+    }
 }
