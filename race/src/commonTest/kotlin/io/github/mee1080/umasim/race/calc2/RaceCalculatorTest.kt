@@ -2,7 +2,10 @@ package io.github.mee1080.umasim.race.calc2
 
 import io.github.mee1080.umasim.race.data2.SkillCondition
 import io.github.mee1080.umasim.race.data2.SkillData
+import io.github.mee1080.umasim.race.data2.SkillEffect
+import io.github.mee1080.umasim.race.data2.Invoke
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -46,6 +49,33 @@ class RaceCalculatorTest {
         }
     }
 
+    @Test
+    fun passiveSkillSelectsFirstMatchingInvoke() {
+        val skill = allInSkill()
+
+        val (_, ordinaryState) = RaceCalculator(SystemSetting()).simulate(
+            RaceSetting(
+                umaStatus = UmaStatus(hasSkills = listOf(skill)),
+                track = Track(location = 10006, course = 10604),
+            )
+        )
+        assertEquals(60, ordinaryState.setting.passiveBonus.speed)
+        assertEquals(60, ordinaryState.setting.passiveBonus.power)
+        assertEquals(2, ordinaryState.setting.passiveBonus.skills.single().invoke.index)
+        assertFalse(ordinaryState.simulation.ignorePopularity)
+
+        val (_, specialState) = RaceCalculator(SystemSetting()).simulate(
+            RaceSetting(
+                umaStatus = UmaStatus(hasSkills = listOf(skill)),
+                track = Track(location = 10009, course = 10906),
+            )
+        )
+        assertEquals(60, specialState.setting.passiveBonus.speed)
+        assertEquals(60, specialState.setting.passiveBonus.power)
+        assertEquals(1, specialState.setting.passiveBonus.skills.single().invoke.index)
+        assertTrue(specialState.simulation.ignorePopularity)
+    }
+
     private fun checkSuccessionSkillCount(rarities: List<String>): Boolean {
         val skills = rarities.mapIndexed { index, rarity -> testSkill(rarity, index.toString()) }
         val setting = RaceSetting(umaStatus = UmaStatus(hasSkills = skills))
@@ -71,6 +101,44 @@ class RaceCalculatorTest {
         group = 0,
         type = "speed",
     )
+
+    private fun allInSkill() = SkillData(
+        id = "104901311",
+        name = "All-in!!",
+        rarity = "evo",
+        group = 20265,
+        type = "multi",
+        activateLot = 0,
+        invokes = listOf(
+            Invoke(
+                skillId = "104901311",
+                index = 1,
+                preConditions = listOf(
+                    listOf(
+                        SkillCondition("track_id", "==", 10009),
+                        SkillCondition("course_distance", "==", 2200),
+                    ),
+                    listOf(SkillCondition("track_id", "==", 10201)),
+                ),
+                conditions = listOf(listOf(SkillCondition("distance_type", "==", 3))),
+                effects = passiveEffects + SkillEffect("ignorePopularity", 10000),
+                cd = 0.0,
+            ),
+            Invoke(
+                skillId = "104901311",
+                index = 2,
+                conditions = listOf(listOf(SkillCondition("distance_type", "==", 3))),
+                effects = passiveEffects,
+                cd = 0.0,
+            ),
+        ),
+    )
+
+    private val passiveEffects
+        get() = listOf(
+            SkillEffect("passiveSpeed", 600000),
+            SkillEffect("passivePower", 600000),
+        )
 
     @Test
     fun testFullSpurtFrameRecording() {

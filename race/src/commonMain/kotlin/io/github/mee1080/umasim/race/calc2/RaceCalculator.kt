@@ -151,15 +151,25 @@ private fun RaceSetting.invokeSkills(): List<InvokedSkill> {
 private fun RaceSetting.applyPassive(system: SystemSetting, simulation: RaceSimulationState): RaceSettingWithPassive {
     var passiveBonus = PassiveBonus()
     val stateForCheck = RaceState(RaceSettingWithPassive(this, passiveBonus), simulation, system, null)
-    if (simulation.invokedSkills.any { it.invoke.isIgnorePopularity && it.check(stateForCheck) }) {
+    var activeSkills = simulation.invokedSkills.selectActivePassives(stateForCheck)
+    if (activeSkills.any { it.invoke.isIgnorePopularity }) {
         simulation.ignorePopularity = true
+        activeSkills = simulation.invokedSkills.selectActivePassives(stateForCheck)
     }
-    simulation.invokedSkills.forEach { skill ->
-        if (skill.invoke.isPassive && skill.check(stateForCheck)) {
-            passiveBonus = passiveBonus.add(stateForCheck, skill)
-        }
+    activeSkills.forEach { skill ->
+        passiveBonus = passiveBonus.add(stateForCheck, skill)
     }
     return RaceSettingWithPassive(this, passiveBonus)
+}
+
+private fun List<InvokedSkill>.selectActivePassives(state: RaceState): List<InvokedSkill> {
+    val selectedCoolDownIds = mutableSetOf<String>()
+    return filter { skill ->
+        skill.invoke.isPassive &&
+                skill.preCheck(state) &&
+                skill.check(state) &&
+                selectedCoolDownIds.add(skill.invoke.coolDownId)
+    }
 }
 
 private fun RaceState.triggerStartSkills() {
